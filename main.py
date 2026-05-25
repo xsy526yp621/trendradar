@@ -8,6 +8,10 @@ from datetime import datetime
 import webbrowser
 from typing import Dict, List, Tuple, Optional, Union
 
+import hmac
+import hashlib
+import base64
+
 import requests
 import pytz
 
@@ -21,6 +25,7 @@ CONFIG = {
     "DEFAULT_PROXY": "http://127.0.0.1:10086",
     "CONTINUE_WITHOUT_FEISHU": True,  # 控制是否在没有飞书webhook URL时继续执行爬虫, 如果True ,会依然进行爬虫行为，会在github上持续的生成爬取的新闻数据
     "FEISHU_WEBHOOK_URL": "",  # 飞书机器人的webhook URL，大概长这样：https://www.feishu.cn/flow/api/trigger-webhook/xxxx， 默认为空，推荐通过GitHub Secrets设置
+    "FEISHU_SIGN_SECRET": "",  # 飞书v2 webhook签名校验密钥，推荐通过GitHub Secrets设置
 }
 
 
@@ -993,6 +998,20 @@ class ReportGenerator:
         if not webhook_url:
             print(f"警告: FEISHU_WEBHOOK_URL未设置或无效，跳过发送飞书通知")
             return False
+
+        # 飞书v2 webhook签名校验
+        sign_secret = os.environ.get("FEISHU_SIGN_SECRET", CONFIG.get("FEISHU_SIGN_SECRET", ""))
+        if "/bot/v2/" in webhook_url and sign_secret:
+            timestamp = str(int(time.time()))
+            string_to_sign = f"{timestamp}\n{sign_secret}"
+            hmac_code = hmac.new(
+                sign_secret.encode("utf-8"),
+                string_to_sign.encode("utf-8"),
+                hashlib.sha256,
+            ).digest()
+            sign = base64.b64encode(hmac_code).decode("utf-8")
+            webhook_url = f"{webhook_url}?timestamp={timestamp}&sign={sign}"
+            print(f"已添加飞书v2签名校验")
 
         headers = {"Content-Type": "application/json"}
 
