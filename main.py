@@ -1021,14 +1021,10 @@ class ReportGenerator:
         # 构建文本内容
         text_content = ReportGenerator._build_feishu_content(stats, failed_ids)
 
-        # 构造消息体
-        now = TimeHelper.get_beijing_time()
+        # 构造消息体（v2 webhook 只接受标准字段）
         payload = {
             "msg_type": "text",
             "content": {
-                "total_titles": total_titles,
-                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "report_type": report_type,
                 "text": text_content,
             },
         }
@@ -1036,7 +1032,8 @@ class ReportGenerator:
         # 发送请求
         try:
             response = requests.post(webhook_url, headers=headers, json=payload)
-            if response.status_code == 200:
+            resp_body = response.json() if response.text else {}
+            if response.status_code == 200 and resp_body.get("code", 0) == 0:
                 print(f"数据发送到飞书成功 [{report_type}]")
                 return True
             else:
