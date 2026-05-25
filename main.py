@@ -1001,33 +1001,35 @@ class ReportGenerator:
 
         # 飞书v2 webhook签名校验
         sign_secret = os.environ.get("FEISHU_SIGN_SECRET", CONFIG.get("FEISHU_SIGN_SECRET", ""))
+        feishu_timestamp = None
+        feishu_sign = None
         if "/bot/v2/" in webhook_url and sign_secret:
-            timestamp = str(int(time.time()))
-            string_to_sign = f"{timestamp}\n{sign_secret}"
+            feishu_timestamp = str(int(time.time()))
+            string_to_sign = f"{feishu_timestamp}\n{sign_secret}"
+            # 飞书v2特殊HMAC: key=stringToSign, data=空字符串
             hmac_code = hmac.new(
-                sign_secret.encode("utf-8"),
                 string_to_sign.encode("utf-8"),
+                b"",
                 hashlib.sha256,
             ).digest()
-            sign = base64.b64encode(hmac_code).decode("utf-8")
-            webhook_url = f"{webhook_url}?timestamp={timestamp}&sign={sign}"
+            feishu_sign = base64.b64encode(hmac_code).decode("utf-8")
             print(f"已添加飞书v2签名校验")
 
         headers = {"Content-Type": "application/json"}
 
-        # 获取总标题数
-        total_titles = sum(len(stat["titles"]) for stat in stats if stat["count"] > 0)
-
         # 构建文本内容
         text_content = ReportGenerator._build_feishu_content(stats, failed_ids)
 
-        # 构造消息体（v2 webhook 只接受标准字段）
+        # 构造消息体（v2 timestamp/sign 放在 body 中，非URL参数）
         payload = {
             "msg_type": "text",
             "content": {
                 "text": text_content,
             },
         }
+        if feishu_timestamp and feishu_sign:
+            payload["timestamp"] = feishu_timestamp
+            payload["sign"] = feishu_sign
 
         # 发送请求
         try:
